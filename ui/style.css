@@ -36,7 +36,15 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px;
 .row { display: flex; gap: 10px; }
 .btn { padding: 10px 16px; font-size: 15px; }
 .btn.on { border-color: var(--t); color: var(--t); }
-select { flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px; }
+select {
+  flex: 1; min-width: 0; font-size: 14px; padding: 9px 32px 9px 12px; text-overflow: ellipsis;
+  color-scheme: dark; -webkit-appearance: none; appearance: none;
+  background: #000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23fff' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 12px center;
+}
+html[dir=rtl] select { padding: 9px 12px 9px 32px; background-position: left 12px center; }
+select:focus, select:active { background-color: #000; color: #fff; }
+option { background: #000; color: #fff; }
+option:checked { background: var(--t); color: #000; }
 
 .opts { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
 .opts select { flex: none; }

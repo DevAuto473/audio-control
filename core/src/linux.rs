@@ -27,23 +27,83 @@ fn pactl(args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-fn list_sinks() -> Vec<Device> {
-    // `pactl list sinks` is verbose but gives us the human readable description
-    let Ok(txt) = pactl(&["list", "sinks"]) else { return vec![] };
-    let (mut out, mut name): (Vec<Device>, Option<String>) = (vec![], None);
+struct Sink {
+    id: String,
+    name: String,
+    /// false when the active port reports "not available" (e.g. HDMI with nothing plugged in)
+    usable: bool,
+    hdmi: bool,
+}
+
+fn parse_sinks() -> Vec<Sink> {
+    match pactl(&["list", "sinks"]) {
+        Ok(t) => parse_sinks_text(&t),
+        Err(_) => vec![],
+    }
+}
+
+fn parse_sinks_text(txt: &str) -> Vec<Sink> {
+    let mut out: Vec<Sink> = vec![];
+    let (mut name, mut desc, mut active) = (None::<String>, None::<String>, None::<String>);
+    let mut ports: Vec<(String, bool)> = vec![]; // (port name, available)
+
+    let mut flush = |name: &mut Option<String>, desc: &mut Option<String>, active: &mut Option<String>, ports: &mut Vec<(String, bool)>| {
+        if let (Some(n), Some(d)) = (name.take(), desc.take()) {
+            let usable = match active.as_ref() {
+                Some(a) => ports.iter().find(|(p, _)| p == a).map(|(_, ok)| *ok).unwrap_or(true),
+                None => true,
+            };
+            let low = format!("{n} {d}").to_lowercase();
+            if n != VSINK {
+                out.push(Sink { id: n, name: d, usable, hdmi: low.contains("hdmi") || low.contains("displayport") });
+            }
+        }
+        *active = None;
+        ports.clear();
+    };
+
     for line in txt.lines() {
         let l = line.trim();
-        if let Some(n) = l.strip_prefix("Name: ") {
+        if l.starts_with("Sink #") {
+            flush(&mut name, &mut desc, &mut active, &mut ports);
+        } else if let Some(n) = l.strip_prefix("Name: ") {
             name = Some(n.to_string());
         } else if let Some(d) = l.strip_prefix("Description: ") {
-            if let Some(n) = name.take() {
-                if n != VSINK {
-                    out.push(Device { id: n, name: d.to_string() });
+            desc = Some(d.to_string());
+        } else if let Some(a) = l.strip_prefix("Active Port: ") {
+            active = Some(a.to_string());
+        } else if l.contains("(type:") || l.contains("priority:") {
+            // port line: "<port>: <label> (type: ..., priority: ..., [availability ...])"
+            if let Some((pn, rest)) = l.split_once(": ") {
+                if rest.contains("priority:") {
+                    ports.push((pn.to_string(), !rest.contains("not available")));
                 }
             }
         }
     }
+    flush(&mut name, &mut desc, &mut active, &mut ports);
     out
+}
+
+/// Best real output: the system default if it works, else a working
+/// non-HDMI device (laptop speakers), else any working device.
+fn pick_real(sinks: &[Sink], default: &str) -> Option<String> {
+    sinks.iter().find(|s| s.id == default && s.usable)
+        .or_else(|| sinks.iter().find(|s| s.usable && !s.hdmi && !s.id.contains("auto_null")))
+        .or_else(|| sinks.iter().find(|s| s.usable && !s.id.contains("auto_null")))
+        .or_else(|| sinks.first())
+        .map(|s| s.id.clone())
+}
+
+fn list_sinks() -> Vec<Device> {
+    let sinks = parse_sinks();
+    let default = pactl(&["get-default-sink"]).unwrap_or_default();
+    let best = pick_real(&sinks, &default);
+    let any_usable = sinks.iter().any(|s| s.usable);
+    let mut devs: Vec<&Sink> = sinks.iter().filter(|s| s.usable || !any_usable).collect();
+    // the device the app would pick goes first
+    devs.sort_by_key(|s| Some(&s.id) != best.as_ref());
+    devs.into_iter().map(|s| Device { id: s.id.clone(), name: s.name.clone() }).collect()
 }
 
 fn sink_volume_percent(sink: &str) -> Option<u32> {
@@ -74,32 +134,25 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Real output devices, the system default first.
+    /// Working output devices; the one the app would pick is first.
     pub fn outputs() -> Vec<Device> {
-        let mut list = list_sinks();
-        if let Ok(def) = pactl(&["get-default-sink"]) {
-            if let Some(i) = list.iter().position(|d| d.id == def) {
-                let d = list.remove(i);
-                list.insert(0, d);
-            }
-        }
-        list
+        list_sinks()
     }
 
     pub fn start(output: Option<String>, gain: f32) -> Result<Self, String> {
         let default = pactl(&["get-default-sink"])?;
-        let sinks = list_sinks();
+        let sinks = parse_sinks();
         // If we crashed earlier the default is still our virtual sink.
         let real_sink = match output {
             Some(o) if sinks.iter().any(|d| d.id == o) => o,
-            _ if default != VSINK && sinks.iter().any(|d| d.id == default) => default.clone(),
-            _ => sinks
-                .iter()
-                .find(|d| !d.id.contains("auto_null"))
-                .map(|d| d.id.clone())
-                .ok_or("no output device found")?,
+            _ => pick_real(&sinks, &default).ok_or("no output device found")?,
         };
-        let prev_default = if default == VSINK { real_sink.clone() } else { default };
+        // restore target: the old default if it works, otherwise the device we picked
+        let prev_default = if default != VSINK && sinks.iter().any(|d| d.id == default && d.usable) {
+            default
+        } else {
+            real_sink.clone()
+        };
 
         let have_vsink = pactl(&["list", "short", "sinks"])?
             .lines()
@@ -246,5 +299,38 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = "Sink #50
+\tState: SUSPENDED
+\tName: alsa_output.pci-0000_00_1f.3.hdmi-stereo-extra2
+\tDescription: 700 Series Chipset Family HD Audio HDMI / DisplayPort 3 Output (Stereo)
+\tPorts:
+\t\thdmi-output-2: HDMI / DisplayPort 3 (type: HDMI, priority: 5700, availability group: Legacy 3, not available)
+\tActive Port: hdmi-output-2
+Sink #51
+\tState: RUNNING
+\tName: alsa_output.pci-0000_00_1f.3.analog-stereo
+\tDescription: 700 Series Chipset Family HD Audio Speaker
+\tPorts:
+\t\tanalog-output-speaker: Speakers (type: Speaker, priority: 10000, availability unknown)
+\t\tanalog-output-headphones: Headphones (type: Headphones, priority: 9900, availability group: Legacy 1, not available)
+\tActive Port: analog-output-speaker
+";
+
+    #[test]
+    fn picks_working_speaker_over_unplugged_hdmi() {
+        let sinks = parse_sinks_text(SAMPLE);
+        assert_eq!(sinks.len(), 2);
+        assert!(!sinks[0].usable && sinks[0].hdmi);
+        assert!(sinks[1].usable && !sinks[1].hdmi);
+        // even when the system default is the dead HDMI output
+        let picked = pick_real(&sinks, &sinks[0].id).unwrap();
+        assert!(picked.contains("analog-stereo"));
     }
 }
