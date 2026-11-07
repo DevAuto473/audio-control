@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audio Boost</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Audio Boost</h1>
+      <label class="switch" title="Turn the engine on or off">
+        <input type="checkbox" id="power" checked>
+        <span></span>
+      </label>
+    </header>
+
+    <section class="readout">
+      <div class="value"><span id="pct">100</span><small>%</small></div>
+      <div class="hint" id="hint">Normal volume</div>
+    </section>
+
+    <section class="slider">
+      <button class="step" id="down" aria-label="Lower">&minus;</button>
+      <div class="track">
+        <input type="range" id="vol" min="0" max="300" step="1" value="100">
+        <i class="mark" aria-hidden="true"></i>
+      </div>
+      <button class="step" id="up" aria-label="Raise">+</button>
+    </section>
+
+    <section class="presets" id="presets">
+      <button data-v="50">50</button>
+      <button data-v="100">100</button>
+      <button data-v="150">150</button>
+      <button data-v="200">200</button>
+      <button data-v="300">300</button>
+    </section>
+
+    <section class="meter">
+      <div class="bar"><b id="level"></b></div>
+      <div class="meta"><span>Output</span><span id="limiter">Limiter idle</span></div>
+    </section>
+
+    <section class="row">
+      <button id="mute" class="ghost">Mute</button>
+      <select id="output" aria-label="Output device"></select>
+    </section>
+
+    <p id="status" class="status">Starting&hellip;</p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
