@@ -8,12 +8,14 @@ const T = {
     on_linux: "Running. All system audio goes through Audio Boost.",
     on_windows: "Running. Windows playback device must be CABLE Input.",
     off: "Off. Audio goes straight to your speakers.",
+    died: "The audio engine stopped. Normal audio was restored.",
   },
   ar: {
     power: "تشغيل / إيقاف", mute: "كتم", unmute: "إلغاء الكتم", autostart: "التشغيل مع النظام",
     on_linux: "يعمل. كل صوت النظام يمر عبر Audio Boost.",
     on_windows: "يعمل. يجب أن يكون جهاز التشغيل في ويندوز هو CABLE Input.",
     off: "متوقف. الصوت يذهب مباشرة إلى السماعات.",
+    died: "توقف محرك الصوت. تمت استعادة الصوت العادي.",
   },
 };
 const store = {
@@ -54,6 +56,7 @@ async function start() {
   try {
     const s = await invoke("start", { output, gain: gain / 100 });
     running = s.running;
+    if (s.output) $("output").value = s.output;
     if (muted) invoke("set_muted", { muted });
     say(s.platform === "windows" ? "on_windows" : "on_linux");
   } catch (e) {
@@ -69,7 +72,8 @@ async function loadOutputs() {
   const sel = $("output");
   sel.innerHTML = "";
   for (const d of list) sel.add(new Option(d.name, d.id));
-  if (output && list.some((d) => d.id === output)) sel.value = output; else output = sel.value || null;
+  // only force a device when the user picked one; otherwise follow the system default
+  if (output && list.some((d) => d.id === output)) sel.value = output; else output = null;
 }
 
 vol.addEventListener("input", () => setGain(+vol.value));
@@ -97,6 +101,13 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown" || e.key === "ArrowLeft") { setGain(gain - 5); e.preventDefault(); }
   if (e.key.toLowerCase() === "m") $("mute").click();
 });
+
+// if the engine dies, say so instead of leaving a switch that lies
+setInterval(async () => {
+  if (document.hidden || !$("power").checked) return;
+  const s = await invoke("state");
+  if (running && !s.running) { running = false; $("power").checked = false; say("died", true); }
+}, 3000);
 
 paint();
 applyLang();

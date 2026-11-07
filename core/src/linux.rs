@@ -52,7 +52,18 @@ fn sink_volume_percent(sink: &str) -> Option<u32> {
     pct.parse().ok()
 }
 
+/// Give audio back to the real device (idempotent).
+fn restore_audio(prev_default: &str) {
+    let _ = pactl(&["set-default-sink", prev_default]);
+    if let Ok(list) = pactl(&["list", "short", "sink-inputs"]) {
+        for id in list.lines().filter_map(|l| l.split_whitespace().next()) {
+            let _ = pactl(&["move-sink-input", id, prev_default]);
+        }
+    }
+}
+
 pub struct Engine {
+    stopping: Arc<std::sync::atomic::AtomicBool>,
     shared: Arc<Shared>,
     children: Vec<Child>,
     thread: Option<JoinHandle<()>>,
@@ -63,8 +74,16 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Real output devices, the system default first.
     pub fn outputs() -> Vec<Device> {
-        list_sinks()
+        let mut list = list_sinks();
+        if let Ok(def) = pactl(&["get-default-sink"]) {
+            if let Some(i) = list.iter().position(|d| d.id == def) {
+                let d = list.remove(i);
+                list.insert(0, d);
+            }
+        }
+        list
     }
 
     pub fn start(output: Option<String>, gain: f32) -> Result<Self, String> {
@@ -92,7 +111,7 @@ impl Engine {
                 "load-module",
                 "module-null-sink",
                 &format!("sink_name={VSINK}"),
-                "sink_properties=device.description='Audio Boost'",
+                "sink_properties=device.description=AudioBoost",
                 &format!("rate={SAMPLE_RATE}"),
                 "channels=2",
             ])?)
@@ -115,7 +134,7 @@ impl Engine {
             .args(&fmt)
             .arg("--latency-msec=20")
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(if std::env::var_os("AB_DEBUG").is_some() { Stdio::inherit() } else { Stdio::null() })
             .spawn()
             .map_err(|e| format!("could not run parec ({e}). Install pulseaudio-utils"))?;
         let mut play = Command::new("pacat")
@@ -125,7 +144,7 @@ impl Engine {
             .args(&fmt)
             .arg("--latency-msec=40")
             .stdin(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(if std::env::var_os("AB_DEBUG").is_some() { Stdio::inherit() } else { Stdio::null() })
             .spawn()
             .map_err(|e| format!("could not run pacat ({e}). Install pulseaudio-utils"))?;
 
@@ -133,6 +152,9 @@ impl Engine {
         let mut output_pipe = play.stdin.take().unwrap();
         let shared = Arc::new(Shared::new(gain.clamp(0.0, MAX_GAIN)));
         let sh = shared.clone();
+        let stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_flag = stopping.clone();
+        let fallback = prev_default.clone();
         let thread = std::thread::spawn(move || {
             let mut p = Processor::new(SAMPLE_RATE, CH);
             p.set_gain(sh.effective_gain());
@@ -157,6 +179,10 @@ impl Engine {
                 }
             }
             sh.running.store(false, Ordering::Relaxed);
+            // pipeline died on its own: never leave the system silent
+            if !stop_flag.load(Ordering::Relaxed) {
+                restore_audio(&fallback);
+            }
         });
 
         // Route everything through the virtual sink.
@@ -168,6 +194,7 @@ impl Engine {
         }
 
         Ok(Self {
+            stopping,
             shared,
             children: vec![rec, play],
             thread: Some(thread),
@@ -195,14 +222,10 @@ impl Engine {
     }
 
     pub fn stop(&mut self) {
+        self.stopping.store(true, Ordering::Relaxed);
         self.shared.running.store(false, Ordering::Relaxed);
         // give audio back to the real device first so nothing goes silent
-        let _ = pactl(&["set-default-sink", &self.prev_default]);
-        if let Ok(list) = pactl(&["list", "short", "sink-inputs"]) {
-            for id in list.lines().filter_map(|l| l.split_whitespace().next()) {
-                let _ = pactl(&["move-sink-input", id, &self.prev_default]);
-            }
-        }
+        restore_audio(&self.prev_default);
         if let Some(v) = self.prev_volume.take() {
             let _ = pactl(&["set-sink-volume", &self.real_sink, &format!("{v}%")]);
         }
