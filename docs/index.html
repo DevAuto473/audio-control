@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Boost</title>
+<style>
+:root{--t:#40e0d0;font-family:"Roca Two",Georgia,serif}
+*{box-sizing:border-box;margin:0}
+body{background:#000;color:#fff;min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}
+main{max-width:440px;width:100%;display:flex;flex-direction:column;gap:18px}
+h1{font-size:36px}p{color:#999}
+a.btn{display:block;padding:16px;border:1px solid var(--t);border-radius:10px;color:#000;background:var(--t);text-decoration:none;font-size:18px;font-weight:700}
+a.btn.alt{background:#000;color:#fff;border-color:#333}
+a.btn:hover{filter:brightness(1.1)}
+code{display:block;padding:12px;border:1px solid #333;border-radius:8px;color:var(--t);font-size:13px;word-break:break-all;text-align:left;user-select:all}
+small{color:#999;font-size:13px}
+</style>
+</head>
+<body><main>
+<h1>Audio Boost</h1>
+<p>Volume from 0 to 300% without distortion.</p>
+<a id="main" class="btn" href="#">Download</a>
+<a id="other" class="btn alt" href="#"></a>
+<div id="fedora" hidden>
+<small>Or install on Fedora with one command:</small>
+<code>curl -L https://github.com/DevAuto473/audio-control/releases/latest/download/AudioBoost-Fedora.x86_64.rpm -o /tmp/ab.rpm &amp;&amp; sudo dnf install -y /tmp/ab.rpm</code>
+</div>
+<small id="note"></small>
+</main>
+<script>
+const base="https://github.com/DevAuto473/audio-control/releases/latest/download/";
+const W=["Download for Windows",base+"AudioBoost-Windows-Setup.exe"], F=["Download for Fedora (.rpm)",base+"AudioBoost-Fedora.x86_64.rpm"];
+const win=/Windows/i.test(navigator.userAgent);
+const [m,o]=win?[W,F]:[F,W];
+main.textContent=m[0];main.href=m[1];other.textContent=o[0];other.href=o[1];
+fedora.hidden=win;
+note.textContent=win?"Needs the free VB-Audio Virtual Cable (vb-audio.com/Cable).":"";
+</script>
+</body></html>

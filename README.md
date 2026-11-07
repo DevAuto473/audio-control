@@ -3,6 +3,14 @@
 Small desktop volume tool for Fedora and Windows. Volume goes from 0 % to 300 %.
 A look-ahead limiter keeps boosted audio clean instead of crackling.
 
+## Download
+Latest builds: [Windows](https://github.com/DevAuto473/audio-control/releases/latest/download/AudioBoost-Windows-Setup.exe) · [Fedora (.rpm)](https://github.com/DevAuto473/audio-control/releases/latest/download/AudioBoost-Fedora.x86_64.rpm)
+
+Fedora, one command:
+```bash
+curl -L https://github.com/DevAuto473/audio-control/releases/latest/download/AudioBoost-Fedora.x86_64.rpm -o /tmp/ab.rpm && sudo dnf install -y /tmp/ab.rpm
+```
+
 ## How it works
 * **Fedora (PipeWire):** creates a virtual output "Audio Boost", sends all system audio
   through it, applies gain + limiter and plays it on your real speakers.
