@@ -67,6 +67,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 setInterval(async () => {
+  if (document.hidden) return; // window hidden in tray: no UI work
   if (!running) { $("level").style.width = "0"; $("limiter").textContent = "Limiter off"; return; }
   const m = await invoke("meter");
   if (!m) return;

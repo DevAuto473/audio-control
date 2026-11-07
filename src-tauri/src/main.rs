@@ -2,7 +2,9 @@
 
 use boost_core::{Device, Engine, Meter};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, State, WindowEvent};
 
 #[derive(Default)]
 struct App(Mutex<Option<Engine>>);
@@ -70,9 +72,46 @@ fn state(app: State<App>) -> Status {
     status(&app.0.lock().unwrap())
 }
 
+fn show_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(App::default())
+        .setup(|app| {
+            let show = MenuItem::with_id(app, "show", "Show Audio Boost", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit (restore normal audio)", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Audio Boost")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, ev| match ev.id.as_ref() {
+                    "show" => show_main(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, ev| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = ev {
+                        show_main(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        // closing the window only hides it; the audio engine keeps running
+        .on_window_event(|w, ev| {
+            if let WindowEvent::CloseRequested { api, .. } = ev {
+                api.prevent_close();
+                let _ = w.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![outputs, start, stop, set_gain, set_muted, meter, state])
         .build(tauri::generate_context!())
         .expect("error while building Audio Boost")

@@ -12,6 +12,13 @@ A look-ahead limiter keeps boosted audio clean instead of crackling.
   set **CABLE Input** as the default playback device, then pick your real
   speakers inside the app.
 
+## Background mode
+Closing the window hides it to the system tray and the engine keeps running
+(the UI does no work while hidden, only the lightweight audio loop runs).
+Use the tray icon to show the window again, or "Quit" to stop and restore normal audio.
+On GNOME (Fedora Workstation) the tray needs the "AppIndicator and KStatusNotifierItem Support" extension:
+`sudo dnf install gnome-shell-extension-appindicator`, then enable it.
+
 ## Build
 ```bash
 npm install
