@@ -12,6 +12,12 @@ A look-ahead limiter keeps boosted audio clean instead of crackling.
   set **CABLE Input** as the default playback device, then pick your real
   speakers inside the app.
 
+## Start with system
+Optional checkbox in the app. When enabled the app starts hidden in the tray at login.
+
+## Language
+English or Arabic (right-to-left), chosen inside the app.
+
 ## Background mode
 Closing the window hides it to the system tray and the engine keeps running
 (the UI does no work while hidden, only the lightweight audio loop runs).

@@ -82,6 +82,10 @@ fn show_main(app: &AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .manage(App::default())
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Show Audio Boost", true, None::<&str>)?;
@@ -103,6 +107,10 @@ fn main() {
                     }
                 })
                 .build(app)?;
+            // started by "Start with system": stay in the tray
+            if !std::env::args().any(|a| a == "--minimized") {
+                show_main(app.handle());
+            }
             Ok(())
         })
         // closing the window only hides it; the audio engine keeps running

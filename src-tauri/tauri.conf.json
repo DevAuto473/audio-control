@@ -11,7 +11,8 @@
         "label": "main",
         "title": "Audio Boost",
         "width": 400,
-        "height": 600,
+        "height": 560,
+        "visible": false,
         "resizable": false,
         "maximizable": false,
         "center": true
